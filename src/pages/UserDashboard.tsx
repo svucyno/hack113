@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useStore } from '../store';
-import { CreditCard, Activity, ShieldCheck, DollarSign, Send, Zap, RefreshCcw, CheckCircle2, XCircle } from 'lucide-react';
+import { CreditCard, Activity, ShieldCheck, DollarSign, Send, Zap, RefreshCcw, CheckCircle2, XCircle, QrCode, UploadCloud, X } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import jsQR from 'jsqr';
 import { generateMockTransaction, evaluateFraudRisk, LOCATIONS, CATEGORIES, initAudio, playAlertSound } from '../utils/mockDataGenerator';
 import { formatCurrency } from '../utils/formatCurrency';
 
@@ -24,6 +25,51 @@ export function UserDashboard() {
   const [accNumber, setAccNumber] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
 
+  // QR Scanner Modal
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scanError, setScanError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setScanError('');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, img.width, img.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+             try {
+               const data = JSON.parse(code.data);
+               if (data.target_account) setPayTarget(data.target_account);
+               if (data.amount) setPayAmount(data.amount.toString());
+               if (data.category) setPayCategory(data.category);
+               if (data.location) setPayLocation(data.location);
+               setShowQRScanner(false);
+               initAudio();
+               setPaymentStatus({ show: true, type: 'success', msg: 'QR Code scanned successfully! Details auto-filled.' });
+               setTimeout(() => setPaymentStatus(null), 3000);
+             } catch(err) {
+               setScanError('QR format unrecognized. Not a valid JSON payload.');
+             }
+          } else {
+             setScanError('No readable QR code found in the image.');
+          }
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
   // Behavioral Biometrics
   const [keystrokes, setKeystrokes] = useState<number[]>([]);
   const [mouseMoves, setMouseMoves] = useState<{x: number, y: number}[]>([]);
@@ -384,7 +430,7 @@ export function UserDashboard() {
             <form onSubmit={handlePayment} onMouseMove={handleMouseMove} onKeyDown={handleKeyDown} className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-300 mb-2">Destination Account / UPI ID</label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <Activity size={18} className="text-slate-400" />
                   </div>
@@ -392,10 +438,18 @@ export function UserDashboard() {
                     type="text"
                     value={payTarget}
                     onChange={(e) => setPayTarget(e.target.value)}
-                    className="w-full bg-navy-900 border border-slate-700/50 rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                    className="w-full bg-navy-900 border border-slate-700/50 rounded-xl pl-10 pr-12 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     placeholder="user@okicici or Account Number"
                     required
                   />
+                  <button 
+                    type="button"
+                    onClick={() => setShowQRScanner(true)}
+                    className="absolute right-3 p-1.5 text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 rounded-lg transition-colors cursor-pointer"
+                    title="Scan QR Code"
+                  >
+                    <QrCode size={20} />
+                  </button>
                 </div>
               </div>
               
@@ -486,6 +540,51 @@ export function UserDashboard() {
                       Verify
                     </button>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {/* QR Scanner Modal */}
+            {showQRScanner && (
+              <div className="absolute inset-0 z-30 bg-[#0e2136]/90 backdrop-blur-md flex flex-col items-center justify-center rounded-2xl border border-white/10 shadow-2xl transition-all">
+                <button 
+                  type="button"
+                  onClick={() => setShowQRScanner(false)}
+                  className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+                
+                <div className="bg-navy-900 border border-white/10 p-8 rounded-2xl shadow-[0_0_40px_rgba(59,130,246,0.15)] text-center max-w-sm w-full mx-4">
+                  <div className="w-16 h-16 bg-blue-500/10 border border-blue-500/30 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_15px_rgba(59,130,246,0.2)]">
+                     <QrCode size={32} className="text-blue-400" />
+                  </div>
+                  
+                  <h4 className="text-xl text-white font-semibold mb-2">Scan Payment QR</h4>
+                  <p className="text-sm text-slate-400 mb-6">Upload an invoice QR code to automatically fill in the transaction details securely.</p>
+                  
+                  <div 
+                    className="border-2 border-dashed border-slate-600 hover:border-blue-500/50 bg-slate-800/30 hover:bg-slate-800/50 transition-colors rounded-xl p-8 cursor-pointer relative group flex flex-col items-center justify-center"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <UploadCloud size={32} className="text-slate-400 group-hover:text-blue-400 mb-3 transition-colors" />
+                    <span className="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Click to upload image</span>
+                    <span className="text-xs text-slate-500 mt-1">Supports PNG, JPG</span>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                    />
+                  </div>
+                  
+                  {scanError && (
+                     <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start text-left">
+                       <XCircle size={16} className="text-red-400 mr-2 mt-0.5 flex-shrink-0" />
+                       <span className="text-xs text-red-400">{scanError}</span>
+                     </div>
+                  )}
                 </div>
               </div>
             )}
