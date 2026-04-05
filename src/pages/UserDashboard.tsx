@@ -323,21 +323,6 @@ export function UserDashboard() {
          newT.status = 'safe';
          addTransaction(newT);
        }
-
-       // Introduce the highly flagged anomaly immediately that the user wants to see!
-       const badT = generateMockTransaction();
-       badT.id = `tx_caught_${Math.random().toString(36).substring(2,8)}`;
-       badT.userId = currentUser!.id;
-       badT.isFraud = true;
-       badT.riskScore = 98;
-       badT.status = 'fraud';
-       badT.flagReason = 'Historical Volume Deviation';
-       badT.amount = 8500;
-       addTransaction(badT);
-       
-       // Pop the alert immediately
-       setAlertTransaction(badT);
-
     }, 2500);
   };
 
